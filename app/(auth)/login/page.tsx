@@ -1,8 +1,7 @@
 import Image from "next/image";
 import { getCurrentUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
-import { cookies, headers } from "next/headers";
-import { LOGIN_NONCE_COOKIE, hashLoginNonce } from "@/lib/auth/loginNonce";
+import { headers } from "next/headers";
 import { isDevLoginEnabled } from "@/lib/auth/dev-login";
 import { createTelegramLoginRequest, isTelegramBotConfigured } from "@/lib/server/telegramLogin";
 import { TelegramLoginButton } from "@/app/(auth)/login/TelegramLoginButton";
@@ -17,18 +16,13 @@ export default async function LoginPage() {
   const botConfigured = isTelegramBotConfigured();
   // Minted here, during render, so the button ships as a plain <a href> that
   // Safari's popup blocker has no reason to touch.
-  // The nonce cookie comes from proxy.ts. Without it the link could not be
-  // bound to this browser, so the client fetches one from /start instead.
   const requestHeaders = await headers();
-  const nonce = (await cookies()).get(LOGIN_NONCE_COOKIE)?.value;
-  const loginLink =
-    botConfigured && nonce
-      ? await createTelegramLoginRequest({
-          ipAddress: requestHeaders.get("x-forwarded-for"),
-          userAgent: requestHeaders.get("user-agent"),
-          nonceHash: hashLoginNonce(nonce),
-        })
-      : null;
+  const loginLink = botConfigured
+    ? await createTelegramLoginRequest({
+        ipAddress: requestHeaders.get("x-forwarded-for"),
+        userAgent: requestHeaders.get("user-agent"),
+      })
+    : null;
 
   return (
     <div className="flex h-full flex-col items-center justify-center-safe gap-8 overflow-y-auto px-8 py-8 text-center">

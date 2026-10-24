@@ -113,7 +113,6 @@ prisma/
   seed.ts              three fake test accounts for local development
   seed.production.ts   first superadmin for a fresh production database (reads env vars)
 public/                emblem, service worker
-proxy.ts               gives /login visitors the nonce cookie that binds a Telegram login to their browser
 ```
 
 `PRODUCT.md` describes the users, roles and product principles in more detail.

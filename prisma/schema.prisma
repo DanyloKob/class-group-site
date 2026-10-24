@@ -155,10 +155,6 @@ model TelegramLoginRequest {
   ipAddress  String?
   userAgent  String?
 
-  // SHA-256 of the HttpOnly nonce cookie held by the browser that started
-  // this login. Only that browser may turn a SUCCESS into a session.
-  nonceHash String?
-
   expiresAt DateTime
   createdAt DateTime @default(now())
 

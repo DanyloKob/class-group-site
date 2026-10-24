@@ -23,8 +23,6 @@ export function isTelegramBotConfigured(): boolean {
 export async function createTelegramLoginRequest(meta: {
   ipAddress?: string | null;
   userAgent?: string | null;
-  /** SHA-256 of the browser's login nonce cookie, see lib/auth/loginNonce.ts. */
-  nonceHash: string;
 }): Promise<TelegramLoginLink | null> {
   const botUsername = process.env.TELEGRAM_BOT_USERNAME;
   if (!isTelegramBotConfigured() || !botUsername) return null;
@@ -38,7 +36,6 @@ export async function createTelegramLoginRequest(meta: {
       expiresAt: new Date(Date.now() + REQUEST_TTL_MS),
       ipAddress: meta.ipAddress ?? null,
       userAgent: meta.userAgent ?? null,
-      nonceHash: meta.nonceHash,
     },
   });
 
