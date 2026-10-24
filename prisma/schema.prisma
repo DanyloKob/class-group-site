@@ -1,0 +1,440 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Enums ────────────────────────────────────────────────
+
+enum ScheduleGroup {
+  A
+  B
+}
+
+enum Theme {
+  LIGHT
+  DARK
+}
+
+enum LoginStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  EXPIRED
+}
+
+enum TaskType {
+  PLAIN
+  FUNDRAISER
+}
+
+// UNPAID is never persisted — it's the absence of a FundraiserEntry row.
+enum PaymentStatus {
+  PAID
+  PAID_WITH_NOTE
+}
+
+// "чисельник" / "знаменник" — the alternating two-week schedule cycle.
+enum WeekParity {
+  NUMERATOR
+  DENOMINATOR
+}
+
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+}
+
+enum ClassGroupScope {
+  A
+  B
+  SHARED
+}
+
+enum DutyType {
+  CAFETERIA
+  BOARD
+}
+
+// ── User & Auth ──────────────────────────────────────────
+
+model User {
+  id               String         @id @default(cuid())
+  phone            String         @unique
+  lastName         String
+  firstName        String
+
+  // No role hierarchy: the superadmin is the one fixed "owner" flag (set
+  // outside this UI, never toggled through it) - everyone else's abilities
+  // are exactly these independent per-person switches, nothing implied by
+  // any tier in between.
+  //
+  // canManageSchedule is homework moderation ONLY - deleting someone else's
+  // homework entry. It grants nothing in /schedule/admin. It once did, which
+  // let everyone holding the "can write homework" flag rewrite the finished
+  // duty roster; splitting canManageDuty out of it is what closed that hole.
+  // Class templates and the numerator/denominator anchor stay superadmin-only
+  // and are deliberately not grantable flags at all.
+  isSuperAdmin      Boolean @default(false)
+  canManageTasks    Boolean @default(false)
+  canManageNews     Boolean @default(false)
+  canManageSchedule Boolean @default(false)
+  canManageDuty     Boolean @default(false)
+  canPostMemories   Boolean @default(false)
+
+  // Which half of the class this person sits in. Nothing reads it yet - it
+  // is captured now so the roll is already complete when a per-group view
+  // needs it.
+  scheduleGroup     ScheduleGroup?
+
+  telegramUserId   BigInt?        @unique
+  telegramUsername String?
+  avatarUrl        String?
+
+  theme            Theme          @default(DARK)
+  // Hex string, e.g. "#34d399" - null means the app's default green. Freely
+  // user-chosen, so text-on-accent contrast is computed from this color's
+  // luminance at render time rather than assumed to always be white.
+  accentColor      String?
+
+  // Meaningful only once at least one PushSubscription row exists for this
+  // user - these default true so turning notifications on for the first
+  // time immediately includes every category, no second step required.
+  notifyTasks      Boolean        @default(true)
+  notifyNews       Boolean        @default(true)
+  notifyHomework   Boolean        @default(true)
+  notifyMemories   Boolean        @default(true)
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  loginRequests     TelegramLoginRequest[]
+  sessions          Session[]
+  pushSubscriptions PushSubscription[]
+  auditLogs         AuditLog[]
+
+  createdTasks              Task[]
+  taskCompletions           TaskCompletion[]
+  fundraiserEntries         FundraiserEntry[] @relation("FundraiserEntryUser")
+  recordedFundraiserEntries FundraiserEntry[] @relation("FundraiserEntryRecordedBy")
+
+  createdNewsPosts NewsPost[]
+  newsLikes        NewsLike[]
+
+  memoryPosts     MemoryPost[]
+  memoryPostLikes MemoryPostLike[]
+
+  dutyAssignments         DutyAssignment[]   @relation("DutyAssignmentPerson")
+  dutyAssignmentsCreated  DutyAssignment[]   @relation("DutyAssignmentCreatedBy")
+  classTemplatesCreated   ClassTemplate[]
+  classOverridesCreated   ClassOverride[]
+  homeworkEntries         Homework[]
+  homeworkLikes           HomeworkLike[]
+  scheduleSettingsEdits   ScheduleSettings[]
+}
+
+model TelegramLoginRequest {
+  id     String      @id @default(cuid())
+  token  String      @unique
+  status LoginStatus @default(PENDING)
+
+  telegramChatId BigInt?
+  telegramUserId BigInt?
+
+  matchedUserId String?
+  matchedUser   User?   @relation(fields: [matchedUserId], references: [id])
+  failureReason String?
+
+  consumedAt DateTime?
+  ipAddress  String?
+  userAgent  String?
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([status, expiresAt])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ── Tasks / Reminders / Fundraiser ───────────────────────
+
+model Task {
+  id          String    @id @default(cuid())
+  type        TaskType
+  title       String
+  description String?
+  dueDate     DateTime?
+  archivedAt  DateTime?
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  completions TaskCompletion[]
+  entries     FundraiserEntry[]
+
+  @@index([type, dueDate])
+  @@index([createdById])
+}
+
+// PLAIN tasks: presence of a row = done (self-managed by the member).
+model TaskCompletion {
+  taskId      String
+  userId      String
+  completedAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+}
+
+// FUNDRAISER tasks: status is set only by an admin/starosta, never the member themselves.
+model FundraiserEntry {
+  taskId       String
+  userId       String
+  status       PaymentStatus
+  note         String?
+  recordedById String
+  recordedAt   DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  task       Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user       User @relation("FundraiserEntryUser", fields: [userId], references: [id], onDelete: Cascade)
+  recordedBy User @relation("FundraiserEntryRecordedBy", fields: [recordedById], references: [id])
+
+  @@id([taskId, userId])
+  @@index([taskId, status])
+}
+
+// ── News ──────────────────────────────────────────────────
+
+model NewsPost {
+  id          String    @id @default(cuid())
+  title       String
+  body        String
+  eventAt     DateTime?
+  // Pinned posts (e.g. a standing link to the year's textbooks) always sort
+  // above the date-ordered announcement stream, regardless of eventAt/
+  // createdAt - see getNewsFeed, which splits on this rather than sorting
+  // it inline.
+  isPinned    Boolean   @default(false)
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  likes NewsLike[]
+
+  @@index([eventAt])
+  @@index([createdById])
+}
+
+model NewsLike {
+  userId     String
+  newsPostId String
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  newsPost NewsPost @relation(fields: [newsPostId], references: [id], onDelete: Cascade)
+
+  @@id([userId, newsPostId])
+  @@index([newsPostId])
+}
+
+// ── Memories (posts + photos) ────────────────────────────
+
+model MemoryPost {
+  id        String   @id @default(cuid())
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  body      String?
+  createdAt DateTime @default(now())
+
+  images MemoryPostImage[]
+  likes  MemoryPostLike[]
+
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model MemoryPostImage {
+  id       String @id @default(cuid())
+  postId   String
+  url      String
+  mimeType String
+  order    Int
+  width    Int?
+  height   Int?
+
+  post MemoryPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, order])
+  @@index([postId])
+}
+
+model MemoryPostLike {
+  userId       String
+  memoryPostId String
+  createdAt    DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memoryPost MemoryPost @relation(fields: [memoryPostId], references: [id], onDelete: Cascade)
+
+  @@id([userId, memoryPostId])
+  @@index([memoryPostId])
+}
+
+// ── Schedule ──────────────────────────────────────────────
+
+// Singleton row (id is always the literal string "singleton").
+model ScheduleSettings {
+  id               String     @id @default("singleton")
+  parityAnchorDate DateTime   @db.Date
+  parityAnchorType WeekParity
+  updatedById      String?
+  updatedBy        User?      @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt        DateTime   @updatedAt
+}
+
+// One person on duty for one date and one duty type. Deliberately NOT a
+// weekday+parity template: with 33 people rotating at the board and meals
+// only on some days, no two-week cycle ever lined up - every day is entered
+// explicitly, from the month editor in /schedule/admin/duty. Any number of
+// people can share a date+dutyType; the row's absence is simply "no duty".
+model DutyAssignment {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  dutyType    DutyType
+  personId    String
+  person      User     @relation("DutyAssignmentPerson", fields: [personId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User     @relation("DutyAssignmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+
+  @@unique([date, dutyType, personId])
+  @@index([date])
+  @@index([personId])
+}
+
+// Recurring default class, keyed by weekday + parity + slot (1-4) + scope.
+model ClassTemplate {
+  id          String          @id @default(cuid())
+  weekday     Weekday
+  parity      WeekParity
+  slot        Int
+  scope       ClassGroupScope
+  subject     String
+  teacher     String
+  room        String
+  createdById String
+  createdBy   User            @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([weekday, parity, slot, scope])
+  @@index([weekday, parity])
+}
+
+// Exact-date override (substitution, cancellation, one-off split/merge).
+model ClassOverride {
+  id          String          @id @default(cuid())
+  date        DateTime        @db.Date
+  slot        Int
+  scope       ClassGroupScope
+  isCancelled Boolean         @default(false)
+  subject     String?
+  teacher     String?
+  room        String?
+  note        String?
+  createdById String
+  createdBy   User            @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([date, slot, scope])
+  @@index([date])
+}
+
+// Scoped to a concrete date+slot (not the recurring template) — homework is always date-specific.
+model Homework {
+  id        String          @id @default(cuid())
+  date      DateTime        @db.Date
+  slot      Int
+  scope     ClassGroupScope
+  text      String
+  authorId  String
+  author    User            @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  likes     HomeworkLike[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([date, slot, scope])
+}
+
+model HomeworkLike {
+  userId     String
+  homeworkId String
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  homework Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+
+  @@id([userId, homeworkId])
+  @@index([homeworkId])
+}
+
+// ── Web push ──────────────────────────────────────────────
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ── Audit log ─────────────────────────────────────────────
+// Deliberately covers only CREATE/DELETE, not UPDATE - the point is
+// tracing who created or destroyed a piece of content (the row's own
+// createdById/authorId already answers "who made this" for anything still
+// live; a delete is exactly the moment that trail would otherwise vanish).
+
+enum AuditAction {
+  CREATE
+  DELETE
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  actorId    String
+  actor      User        @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  action     AuditAction
+  entityType String
+  summary    String
+  createdAt  DateTime    @default(now())
+
+  @@index([createdAt])
+}

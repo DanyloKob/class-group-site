@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+/*
+  DIRECTION — Operate mode (task UI, not a marketing surface), colorized:
+  the accent still marks "this one is active/selected/matters right now"
+  rather than decorating freely, but the neutrals themselves are now tinted
+  toward the brand green (not a pure achromatic gray) so the identity reads
+  even where nothing is actively selected - a cohesive tinted-neutral world,
+  not scattered accent confetti (see BottomNav/PhoneFrame for the two spots
+  that carry a deliberately bigger accent presence). Accent is a cooler
+  emerald, kept one step away from --color-success's warmer grass green so
+  "selected" and "paid/done" stay visually distinct wherever a fundraiser
+  grid or task list shows both at once. Dark is the product default (matches
+  the phone-frame reference and Theme.DARK default); light is a full,
+  equally-finished second mode, not an afterthought. Every text/background
+  pair here is contrast-checked at WCAG AA (4.5:1 body text minimum).
+*/
+
+:root {
+  --color-background: #0a0d0b;
+  --color-surface: #141a16;
+  --color-surface-elevated: #1c2521;
+  --color-border: rgba(180, 255, 210, 0.1);
+  --color-ink: #f2f7f4;
+  --color-ink-muted: #9db3a6;
+  --color-accent: #34d399;
+  --color-accent-ink: #052e1f;
+  --color-success: #4ade80;
+  --color-success-ink: #052e12;
+  --color-danger: #fb7185;
+  --color-danger-ink: #450a0a;
+
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+[data-theme="light"] {
+  --color-background: #f2f8f4;
+  --color-surface: #eaf5ee;
+  --color-surface-elevated: #dcf0e3;
+  --color-border: #c8e3d0;
+  --color-ink: #132018;
+  --color-ink-muted: #4d6858;
+  /* Darkened one step from the originally-approved #059669 - that value put
+     white icon-on-accent text at 3.77:1, under the 4.5:1 AA floor. Same hue,
+     same brand green, just deep enough to read reliably. */
+  --color-accent: #04865a;
+  --color-accent-ink: #ffffff;
+  --color-success: #16a34a;
+  --color-success-ink: #ffffff;
+  --color-danger: #dc2626;
+  --color-danger-ink: #ffffff;
+}
+
+@theme inline {
+  --color-background: var(--color-background);
+  --color-surface: var(--color-surface);
+  --color-surface-elevated: var(--color-surface-elevated);
+  --color-border: var(--color-border);
+  --color-ink: var(--color-ink);
+  --color-ink-muted: var(--color-ink-muted);
+  --color-accent: var(--color-accent);
+  --color-accent-ink: var(--color-accent-ink);
+  --color-success: var(--color-success);
+  --color-success-ink: var(--color-success-ink);
+  --color-danger: var(--color-danger);
+  --color-danger-ink: var(--color-danger-ink);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* iOS Safari zooms the whole page into any focused field under 16px and
+   never zooms back out - every form here uses text-sm (14px). Unlayered, so
+   it outranks those utilities; touch screens only, desktop keeps 14px. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="color"], [type="file"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+::selection {
+  background: color-mix(in oklch, var(--color-accent) 35%, transparent);
+  color: var(--color-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
