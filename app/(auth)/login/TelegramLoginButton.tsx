@@ -150,6 +150,22 @@ export function TelegramLoginButton({
 
   useEffect(() => stopPolling, [stopPolling]);
 
+  // The server leaves the link out when this browser arrived without a login
+  // nonce cookie; /start sets one and returns a link bound to it.
+  useEffect(() => {
+    if (!botConfigured || initialLink) return;
+    let cancelled = false;
+    fetch("/api/auth/telegram/start", { method: "POST" })
+      .then((res) => (res.ok ? (res.json() as Promise<LoginLink>) : null))
+      .then((next) => {
+        if (!cancelled && next) setLink(next);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [botConfigured, initialLink]);
+
   useEffect(() => {
     if (!botConfigured) return;
     const timer = setInterval(() => {
@@ -235,7 +251,9 @@ export function TelegramLoginButton({
           >
             {state.reason === "no_match"
               ? "Цей номер телефону не зареєстрований. Зверніться до адміністратора."
-              : "Не вдалося увійти. Спробуйте ще раз."}
+              : state.reason === "browser_mismatch"
+                ? "Цей вхід почали в іншому браузері. Натисніть кнопку ще раз тут."
+                : "Не вдалося увійти. Спробуйте ще раз."}
           </motion.p>
         )}
         {state.kind === "expired" && (

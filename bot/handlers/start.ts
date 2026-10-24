@@ -28,8 +28,13 @@ export function registerStart(bot: Bot) {
     );
 
     const keyboard = new Keyboard().requestContact("📱 Поділитися контактом").resized().oneTime();
-    await ctx.reply("Щоб увійти, поділіться своїм контактом кнопкою нижче.", {
-      reply_markup: keyboard,
-    });
+    await ctx.reply(
+      "Щоб увійти, поділіться своїм контактом кнопкою нижче.\n\n" +
+        "Підтверджуйте вхід, лише якщо ви щойно самі натиснули «Увійти через Telegram» на сайті. " +
+        "Якщо це посилання вам хтось надіслав, не діліться контактом.",
+      {
+        reply_markup: keyboard,
+      },
+    );
   });
 }

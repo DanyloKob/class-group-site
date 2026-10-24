@@ -1,9 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { createSession, setSessionCookie } from "@/lib/auth/session";
+import { LOGIN_NONCE_COOKIE, loginNonceCookieOptions, loginNonceMatches } from "@/lib/auth/loginNonce";
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
@@ -12,6 +14,14 @@ export async function GET(
   if (!loginRequest) {
     return NextResponse.json({ status: "EXPIRED" });
   }
+
+  // Only the browser that started this login may follow it. Knowing the token
+  // is not enough: it travels in the t.me deep link, and a link someone else
+  // started must never hand their browser the session of whoever confirmed it.
+  if (!loginNonceMatches(request.cookies.get(LOGIN_NONCE_COOKIE)?.value, loginRequest.nonceHash)) {
+    return NextResponse.json({ status: "FAILED", failureReason: "browser_mismatch" }, { status: 403 });
+  }
+
   if (loginRequest.expiresAt < new Date() && loginRequest.status === "PENDING") {
     return NextResponse.json({ status: "EXPIRED" });
   }
@@ -37,6 +47,10 @@ export async function GET(
     ipAddress: request.headers.get("x-forwarded-for"),
   });
   await setSessionCookie(rawToken);
+
+  // Spent: the next login gets a fresh nonce from proxy.ts or /start. Set
+  // through the same cookie store as the session cookie above.
+  (await cookies()).set(LOGIN_NONCE_COOKIE, "", { ...loginNonceCookieOptions, maxAge: 0 });
 
   return NextResponse.json({ status: "SUCCESS" });
 }
