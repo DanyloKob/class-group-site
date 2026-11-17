@@ -7,7 +7,7 @@ import { DutyAdminEditor } from "@/app/(app)/schedule/admin/duty/DutyAdminEditor
 
 export default async function DutyAdminPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/account");
   if (!canManageDuty(user)) redirect("/schedule");
 
   const members = await prisma.user.findMany({
@@ -27,6 +27,7 @@ export default async function DutyAdminPage() {
   return (
     <DutyAdminEditor
       members={members}
+      currentUserId={user.id}
       initialMonth={initialMonth}
       minMonth={minMonth}
       maxMonth={maxMonth}

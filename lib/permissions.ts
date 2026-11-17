@@ -18,27 +18,6 @@
  * inline object types keep this file provably safe in either bundle.
  */
 
-export function canManageTasks(user: { isSuperAdmin: boolean; canManageTasks: boolean }): boolean {
-  return user.isSuperAdmin || user.canManageTasks;
-}
-
-export function canManageNews(user: { isSuperAdmin: boolean; canManageNews: boolean }): boolean {
-  return user.isSuperAdmin || user.canManageNews;
-}
-
-/**
- * Deleting someone else's homework entry. NOT schedule administration.
- *
- * The flag behind this is still the `canManageSchedule` column, and the name
- * used to be canManageSchedule too - which is exactly how every holder of the
- * "can write homework" permission ended up able to rewrite the finished duty
- * roster and edit the class timetable. The function is named for what it
- * actually authorises so that mistake can't be made by autocomplete again.
- */
-export function canModerateHomework(user: { isSuperAdmin: boolean; canManageSchedule: boolean }): boolean {
-  return user.isSuperAdmin || user.canManageSchedule;
-}
-
 export function canPostMemories(user: { canPostMemories: boolean }): boolean {
   return user.canPostMemories;
 }
@@ -68,9 +47,6 @@ export function canOpenScheduleAdmin(user: {
 
 type PermissionFlags = {
   isSuperAdmin: boolean;
-  canManageTasks: boolean;
-  canManageNews: boolean;
-  canManageSchedule: boolean;
   canManageDuty: boolean;
   canPostMemories: boolean;
 };
@@ -79,9 +55,6 @@ type PermissionFlags = {
 export function permissionSummaryLabel(user: PermissionFlags): string {
   if (user.isSuperAdmin) return "супер-адмін";
   const labels = [
-    user.canManageTasks && "збори",
-    user.canManageNews && "оголошення",
-    user.canManageSchedule && "дз",
     user.canManageDuty && "чергові",
     user.canPostMemories && "спогади",
   ].filter((label): label is string => Boolean(label));

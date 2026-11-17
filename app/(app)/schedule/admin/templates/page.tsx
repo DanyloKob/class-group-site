@@ -5,7 +5,7 @@ import { TemplatesAdminEditor } from "@/app/(app)/schedule/admin/templates/Templ
 
 export default async function TemplatesAdminPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/account");
   if (!canManageScheduleSettings(user)) redirect("/schedule");
 
   return <TemplatesAdminEditor />;

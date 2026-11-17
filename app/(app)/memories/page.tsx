@@ -6,7 +6,7 @@ import { MemoryFeed } from "@/app/(app)/memories/_components/MemoryFeed";
 
 export default async function MemoriesPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/account");
 
   const { posts, nextCursor } = await getMemoriesFeed(user.id);
 

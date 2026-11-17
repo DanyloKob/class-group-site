@@ -1,5 +1,5 @@
 /**
- * "Nearest on top" sort, shared by News (eventAt) and Tasks (dueDate).
+ * "Nearest on top" sort. Used by Projects topics (dueDate).
  * Three buckets computed against the current instant, not stored: upcoming
  * (soonest first), undated (newest-created first), then past (most recently
  * past first, sinking to the bottom as an in-feed archive).

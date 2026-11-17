@@ -16,7 +16,20 @@ export async function GET() {
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
   });
 
-  return NextResponse.json({ users: serializeBigInts(users) });
+  // Same shape as the members page, so MembersManager.refresh() keeps hasTelegramLink.
+  const shaped = users.map((m) => ({
+    id: m.id,
+    phone: m.phone,
+    lastName: m.lastName,
+    firstName: m.firstName,
+    isSuperAdmin: m.isSuperAdmin,
+    canManageDuty: m.canManageDuty,
+    canPostMemories: m.canPostMemories,
+    scheduleGroup: m.scheduleGroup,
+    hasTelegramLink: m.telegramUserId !== null,
+  }));
+
+  return NextResponse.json({ users: shaped });
 }
 
 // isSuperAdmin is deliberately absent here - it's a fixed owner flag set
@@ -25,9 +38,6 @@ const createSchema = z.object({
   phone: z.string().trim().min(5).max(20),
   lastName: z.string().trim().min(1).max(100),
   firstName: z.string().trim().min(1).max(100),
-  canManageTasks: z.boolean().default(false),
-  canManageNews: z.boolean().default(false),
-  canManageSchedule: z.boolean().default(false),
   canManageDuty: z.boolean().default(false),
   canPostMemories: z.boolean().default(false),
   scheduleGroup: z.enum(ScheduleGroup).nullable().default(null),
@@ -54,9 +64,6 @@ export async function POST(request: Request) {
       phone,
       lastName: parsed.data.lastName,
       firstName: parsed.data.firstName,
-      canManageTasks: parsed.data.canManageTasks,
-      canManageNews: parsed.data.canManageNews,
-      canManageSchedule: parsed.data.canManageSchedule,
       canManageDuty: parsed.data.canManageDuty,
       canPostMemories: parsed.data.canPostMemories,
       scheduleGroup: parsed.data.scheduleGroup,

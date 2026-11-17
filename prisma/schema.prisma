@@ -14,27 +14,11 @@ enum ScheduleGroup {
   B
 }
 
-enum Theme {
-  LIGHT
-  DARK
-}
-
 enum LoginStatus {
   PENDING
   SUCCESS
   FAILED
   EXPIRED
-}
-
-enum TaskType {
-  PLAIN
-  FUNDRAISER
-}
-
-// UNPAID is never persisted — it's the absence of a FundraiserEntry row.
-enum PaymentStatus {
-  PAID
-  PAID_WITH_NOTE
 }
 
 // "чисельник" / "знаменник" — the alternating two-week schedule cycle.
@@ -73,20 +57,12 @@ model User {
   // No role hierarchy: the superadmin is the one fixed "owner" flag (set
   // outside this UI, never toggled through it) - everyone else's abilities
   // are exactly these independent per-person switches, nothing implied by
-  // any tier in between.
-  //
-  // canManageSchedule is homework moderation ONLY - deleting someone else's
-  // homework entry. It grants nothing in /schedule/admin. It once did, which
-  // let everyone holding the "can write homework" flag rewrite the finished
-  // duty roster; splitting canManageDuty out of it is what closed that hole.
-  // Class templates and the numerator/denominator anchor stay superadmin-only
-  // and are deliberately not grantable flags at all.
-  isSuperAdmin      Boolean @default(false)
-  canManageTasks    Boolean @default(false)
-  canManageNews     Boolean @default(false)
-  canManageSchedule Boolean @default(false)
-  canManageDuty     Boolean @default(false)
-  canPostMemories   Boolean @default(false)
+  // any tier in between. The remaining flags are canManageDuty (assign duty)
+  // and canPostMemories. Class templates and the numerator/denominator anchor
+  // stay superadmin-only and are deliberately not grantable flags at all.
+  isSuperAdmin    Boolean @default(false)
+  canManageDuty   Boolean @default(false)
+  canPostMemories Boolean @default(false)
 
   // Which half of the class this person sits in. Nothing reads it yet - it
   // is captured now so the roll is already complete when a per-group view
@@ -97,35 +73,12 @@ model User {
   telegramUsername String?
   avatarUrl        String?
 
-  theme            Theme          @default(DARK)
-  // Hex string, e.g. "#34d399" - null means the app's default green. Freely
-  // user-chosen, so text-on-accent contrast is computed from this color's
-  // luminance at render time rather than assumed to always be white.
-  accentColor      String?
-
-  // Meaningful only once at least one PushSubscription row exists for this
-  // user - these default true so turning notifications on for the first
-  // time immediately includes every category, no second step required.
-  notifyTasks      Boolean        @default(true)
-  notifyNews       Boolean        @default(true)
-  notifyHomework   Boolean        @default(true)
-  notifyMemories   Boolean        @default(true)
-
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
   loginRequests     TelegramLoginRequest[]
   sessions          Session[]
-  pushSubscriptions PushSubscription[]
   auditLogs         AuditLog[]
-
-  createdTasks              Task[]
-  taskCompletions           TaskCompletion[]
-  fundraiserEntries         FundraiserEntry[] @relation("FundraiserEntryUser")
-  recordedFundraiserEntries FundraiserEntry[] @relation("FundraiserEntryRecordedBy")
-
-  createdNewsPosts NewsPost[]
-  newsLikes        NewsLike[]
 
   memoryPosts     MemoryPost[]
   memoryPostLikes MemoryPostLike[]
@@ -134,9 +87,10 @@ model User {
   dutyAssignmentsCreated  DutyAssignment[]   @relation("DutyAssignmentCreatedBy")
   classTemplatesCreated   ClassTemplate[]
   classOverridesCreated   ClassOverride[]
-  homeworkEntries         Homework[]
-  homeworkLikes           HomeworkLike[]
   scheduleSettingsEdits   ScheduleSettings[]
+
+  projectTopics    ProjectTopic[]    @relation("ProjectTopicCreatedBy")
+  projectMaterials ProjectMaterial[] @relation("ProjectMaterialAuthor")
 }
 
 model TelegramLoginRequest {
@@ -172,92 +126,6 @@ model Session {
   createdAt DateTime @default(now())
 
   @@index([userId])
-}
-
-// ── Tasks / Reminders / Fundraiser ───────────────────────
-
-model Task {
-  id          String    @id @default(cuid())
-  type        TaskType
-  title       String
-  description String?
-  dueDate     DateTime?
-  archivedAt  DateTime?
-  createdById String
-  createdBy   User      @relation(fields: [createdById], references: [id])
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  completions TaskCompletion[]
-  entries     FundraiserEntry[]
-
-  @@index([type, dueDate])
-  @@index([createdById])
-}
-
-// PLAIN tasks: presence of a row = done (self-managed by the member).
-model TaskCompletion {
-  taskId      String
-  userId      String
-  completedAt DateTime @default(now())
-
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@id([taskId, userId])
-}
-
-// FUNDRAISER tasks: status is set only by an admin/starosta, never the member themselves.
-model FundraiserEntry {
-  taskId       String
-  userId       String
-  status       PaymentStatus
-  note         String?
-  recordedById String
-  recordedAt   DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-
-  task       Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user       User @relation("FundraiserEntryUser", fields: [userId], references: [id], onDelete: Cascade)
-  recordedBy User @relation("FundraiserEntryRecordedBy", fields: [recordedById], references: [id])
-
-  @@id([taskId, userId])
-  @@index([taskId, status])
-}
-
-// ── News ──────────────────────────────────────────────────
-
-model NewsPost {
-  id          String    @id @default(cuid())
-  title       String
-  body        String
-  eventAt     DateTime?
-  // Pinned posts (e.g. a standing link to the year's textbooks) always sort
-  // above the date-ordered announcement stream, regardless of eventAt/
-  // createdAt - see getNewsFeed, which splits on this rather than sorting
-  // it inline.
-  isPinned    Boolean   @default(false)
-  createdById String
-  createdBy   User      @relation(fields: [createdById], references: [id])
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  likes NewsLike[]
-
-  @@index([eventAt])
-  @@index([createdById])
-}
-
-model NewsLike {
-  userId     String
-  newsPostId String
-  createdAt  DateTime @default(now())
-
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  newsPost NewsPost @relation(fields: [newsPostId], references: [id], onDelete: Cascade)
-
-  @@id([userId, newsPostId])
-  @@index([newsPostId])
 }
 
 // ── Memories (posts + photos) ────────────────────────────
@@ -374,48 +242,6 @@ model ClassOverride {
   @@index([date])
 }
 
-// Scoped to a concrete date+slot (not the recurring template) — homework is always date-specific.
-model Homework {
-  id        String          @id @default(cuid())
-  date      DateTime        @db.Date
-  slot      Int
-  scope     ClassGroupScope
-  text      String
-  authorId  String
-  author    User            @relation(fields: [authorId], references: [id], onDelete: Restrict)
-  likes     HomeworkLike[]
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-
-  @@index([date, slot, scope])
-}
-
-model HomeworkLike {
-  userId     String
-  homeworkId String
-  createdAt  DateTime @default(now())
-
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  homework Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
-
-  @@id([userId, homeworkId])
-  @@index([homeworkId])
-}
-
-// ── Web push ──────────────────────────────────────────────
-
-model PushSubscription {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-}
-
 // ── Audit log ─────────────────────────────────────────────
 // Deliberately covers only CREATE/DELETE, not UPDATE - the point is
 // tracing who created or destroyed a piece of content (the row's own
@@ -437,4 +263,60 @@ model AuditLog {
   createdAt  DateTime    @default(now())
 
   @@index([createdAt])
+}
+
+enum MaterialKind {
+  LINK
+  PDF
+  PPTX
+}
+
+// Only PPTX materials have a status (null for LINK/PDF): the background
+// LibreOffice conversion that produces slides.pdf for the in-site presenter.
+enum ConversionStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+// «Проєкти»: a topic with its due date. Any logged-in member can create one.
+model ProjectTopic {
+  id          String            @id @default(cuid())
+  title       String
+  subject     String?
+  dueDate     DateTime          @db.Date
+  createdById String
+  createdBy   User              @relation("ProjectTopicCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  materials   ProjectMaterial[]
+
+  @@index([dueDate])
+  @@index([createdById])
+}
+
+// A link or a file (PDF/PPTX) under a topic. `token` is the public, unguessable
+// /m/<token> address; files live on disk at paths derived from `id` only
+// (see lib/server/materialStorage.ts), never from user input.
+model ProjectMaterial {
+  id                 String            @id @default(cuid())
+  topicId            String
+  topic              ProjectTopic      @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  token              String            @unique
+  kind               MaterialKind
+  text               String?
+  url                String?
+  fileName           String?
+  fileSize           Int?
+  conversionStatus   ConversionStatus?
+  conversionError    String?
+  conversionAttempts Int               @default(0)
+  convertedAt        DateTime?
+  authorId           String
+  author             User              @relation("ProjectMaterialAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  createdAt          DateTime          @default(now())
+
+  @@index([topicId, createdAt])
+  @@index([conversionStatus])
+  @@index([authorId])
 }

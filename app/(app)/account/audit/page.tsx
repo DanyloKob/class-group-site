@@ -5,15 +5,14 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 
 const ENTITY_LABEL: Record<string, string> = {
-  News: "Новина",
-  Task: "Завдання",
-  Homework: "ДЗ",
-  MemoryPost: "Спогад",
+  MemoryPost: "спогад",
+  ProjectTopic: "тему проєкту",
+  ProjectMaterial: "матеріал",
 };
 
 export default async function AuditPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/account");
   if (!user.isSuperAdmin) redirect("/account");
 
   const entries = await prisma.auditLog.findMany({

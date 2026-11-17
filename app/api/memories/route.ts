@@ -5,7 +5,6 @@ import { canPostMemories } from "@/lib/permissions";
 import { getMemoriesFeed } from "@/lib/server/memories";
 import { processImage, saveProcessedImage } from "@/lib/uploads";
 import { logAudit } from "@/lib/server/audit";
-import { sendPushToCategory } from "@/lib/server/push";
 
 const MAX_MEMORY_IMAGES = 10;
 
@@ -65,11 +64,6 @@ export async function POST(request: Request) {
     },
   });
   await logAudit(user.id, "CREATE", "MemoryPost", body || `Фото-пост (${saved.length} фото)`);
-  sendPushToCategory(
-    "notifyMemories",
-    { title: "Нове у Спогадах", body: body || `${user.firstName} додав(ла) фото`, url: "/memories" },
-    user.id,
-  ).catch(() => {});
 
   return NextResponse.json({ post }, { status: 201 });
 }

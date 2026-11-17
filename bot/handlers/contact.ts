@@ -20,7 +20,7 @@ export function registerContact(bot: Bot) {
     });
     if (!loginRequest) {
       await ctx.reply(
-        "Не знайшов запит на вхід. Поверніться на сайт і натисніть «Увійти через Telegram» ще раз.",
+        "Не знайшов запит на вхід. Поверніться на сайт (вкладка «Профіль») і натисніть «Увійти через Telegram» ще раз.",
       );
       return;
     }

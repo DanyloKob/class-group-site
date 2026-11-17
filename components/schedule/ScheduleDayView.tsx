@@ -17,13 +17,10 @@ import type { DaySchedule } from "@/lib/server/schedule";
 export function ScheduleDayView({
   initialDateParam,
   initialSchedule,
-  initialCanModerate,
   initialCanOpenAdmin,
 }: {
   initialDateParam: string;
   initialSchedule: DaySchedule;
-  /** Deleting other people's homework. */
-  initialCanModerate: boolean;
   /** Whether the gear leads anywhere - duty manager or superadmin. */
   initialCanOpenAdmin: boolean;
 }) {
@@ -32,7 +29,6 @@ export function ScheduleDayView({
 
   const [dateParam, setDateParam] = useState(initialDateParam);
   const [schedule, setSchedule] = useState(initialSchedule);
-  const [canModerate, setCanModerate] = useState(initialCanModerate);
   const [canOpenAdmin, setCanOpenAdmin] = useState(initialCanOpenAdmin);
   const [direction, setDirection] = useState(0);
 
@@ -48,7 +44,6 @@ export function ScheduleDayView({
     const data = await res.json();
     if (latestRequestedDate.current !== nextDateParam) return; // superseded by a newer request
     setSchedule(data.schedule);
-    setCanModerate(data.canModerate);
     setCanOpenAdmin(data.canOpenAdmin);
   }, []);
 
@@ -150,12 +145,7 @@ export function ScheduleDayView({
           className="mt-2 flex flex-col gap-4"
         >
           <DutySection cafeteria={schedule.cafeteria} board={schedule.board} />
-          <ClassGrid
-            slots={schedule.slots}
-            dateParam={dateParam}
-            canManage={canModerate}
-            onHomeworkChanged={() => fetchDay(dateParam)}
-          />
+          <ClassGrid slots={schedule.slots} />
         </motion.div>
       </AnimatePresence>
     </div>

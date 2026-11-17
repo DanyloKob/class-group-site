@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const autoPhone = process.env.DEV_LOGIN_AUTO_PHONE;
 
   if (!isDevLoginEnabled() || !autoPhone) {
-    return NextResponse.redirect(new URL("/login", url));
+    return NextResponse.redirect(new URL("/account", url));
   }
 
   const user = await prisma.user.findFirst({
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   });
 
   if (!user) {
-    return NextResponse.redirect(new URL("/login", url));
+    return NextResponse.redirect(new URL("/account", url));
   }
 
   const rawToken = await createSession(user.id, {

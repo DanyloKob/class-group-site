@@ -1,22 +1,19 @@
 @import "tailwindcss";
 
 /*
-  DIRECTION — Operate mode (task UI, not a marketing surface), colorized:
-  the accent still marks "this one is active/selected/matters right now"
-  rather than decorating freely, but the neutrals themselves are now tinted
-  toward the brand green (not a pure achromatic gray) so the identity reads
-  even where nothing is actively selected - a cohesive tinted-neutral world,
-  not scattered accent confetti (see BottomNav/PhoneFrame for the two spots
-  that carry a deliberately bigger accent presence). Accent is a cooler
-  emerald, kept one step away from --color-success's warmer grass green so
-  "selected" and "paid/done" stay visually distinct wherever a fundraiser
-  grid or task list shows both at once. Dark is the product default (matches
-  the phone-frame reference and Theme.DARK default); light is a full,
-  equally-finished second mode, not an afterthought. Every text/background
-  pair here is contrast-checked at WCAG AA (4.5:1 body text minimum).
+  DIRECTION: Operate mode (task UI, not a marketing surface). Dark only, with
+  one fixed emerald accent for everyone; the light theme and the per-user
+  accent colour were removed on the owner's request. The accent marks "this
+  one is active/selected/matters right now" rather than decorating freely, and
+  the neutrals are tinted toward the brand green so the identity reads even
+  where nothing is selected. Accent is a cooler emerald, kept one step away
+  from --color-success's warmer grass green so "selected" and "done" stay
+  distinct. Every text/background pair is contrast-checked at WCAG AA (4.5:1
+  body text minimum).
 */
 
 :root {
+  color-scheme: dark;
   --color-background: #0a0d0b;
   --color-surface: #141a16;
   --color-surface-elevated: #1c2521;
@@ -32,24 +29,6 @@
 
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
-}
-
-[data-theme="light"] {
-  --color-background: #f2f8f4;
-  --color-surface: #eaf5ee;
-  --color-surface-elevated: #dcf0e3;
-  --color-border: #c8e3d0;
-  --color-ink: #132018;
-  --color-ink-muted: #4d6858;
-  /* Darkened one step from the originally-approved #059669 - that value put
-     white icon-on-accent text at 3.77:1, under the 4.5:1 AA floor. Same hue,
-     same brand green, just deep enough to read reliably. */
-  --color-accent: #04865a;
-  --color-accent-ink: #ffffff;
-  --color-success: #16a34a;
-  --color-success-ink: #ffffff;
-  --color-danger: #dc2626;
-  --color-danger-ink: #ffffff;
 }
 
 @theme inline {

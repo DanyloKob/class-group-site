@@ -8,6 +8,14 @@ import { dayLongLabel, monthLabel, monthWeekdays, stepMonth, toDateParam, weekda
 import { DutyPeopleSheet, type Member } from "@/app/(app)/schedule/admin/duty/DutyPeopleSheet";
 
 type Cell = { date: string; dutyType: DutyType };
+/** One name in one cell, with the editor who put it there. */
+type Entry = { personId: string; createdById: string };
+type OutsideCounts = Record<DutyType, Record<string, number>>;
+
+type MonthResponse = {
+  assignments?: { date: string; dutyType: DutyType; personId: string; createdById: string }[];
+  countsOutsideMonth?: { personId: string; dutyType: DutyType; count: number }[];
+};
 
 const DUTY_META: { dutyType: DutyType; label: string; icon: typeof ForkKnife }[] = [
   { dutyType: "CAFETERIA", label: "Їдальня", icon: ForkKnife },
@@ -16,19 +24,41 @@ const DUTY_META: { dutyType: DutyType; label: string; icon: typeof ForkKnife }[]
 
 const cellKey = (date: string, dutyType: DutyType) => `${date}|${dutyType}`;
 
+const RESYNC_INTERVAL_MS = 60_000;
+
+function parseMonth(data: MonthResponse): { assignments: Record<string, Entry[]>; outside: OutsideCounts } {
+  const assignments: Record<string, Entry[]> = {};
+  for (const row of data.assignments ?? []) {
+    (assignments[cellKey(row.date, row.dutyType)] ??= []).push({
+      personId: row.personId,
+      createdById: row.createdById,
+    });
+  }
+  const outside: OutsideCounts = { CAFETERIA: {}, BOARD: {} };
+  for (const row of data.countsOutsideMonth ?? []) {
+    outside[row.dutyType][row.personId] = row.count;
+  }
+  return { assignments, outside };
+}
+
 export function DutyAdminEditor({
   members,
+  currentUserId,
   initialMonth,
   minMonth,
   maxMonth,
 }: {
   members: Member[];
+  currentUserId: string;
   initialMonth: string;
   minMonth: string;
   maxMonth: string;
 }) {
   const [month, setMonth] = useState(initialMonth);
-  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
+  const [assignments, setAssignments] = useState<Record<string, Entry[]>>({});
+  // Turns each person has in every month EXCEPT the open one. Added to the
+  // live in-month assignments below, so the counter is all-time.
+  const [outsideCounts, setOutsideCounts] = useState<OutsideCounts>({ CAFETERIA: {}, BOARD: {} });
   const [loading, setLoading] = useState(true);
   // Bumped to re-read the month from the server - after a failed load (retry)
   // or a failed save, where the optimistic list no longer matches the DB.
@@ -38,28 +68,35 @@ export function DutyAdminEditor({
   const [sheetOpen, setSheetOpen] = useState(false);
 
   // Every write goes through one promise chain, so two quick taps can never
-  // land out of order and resurrect the list the earlier tap replaced.
+  // land out of order.
   const saveChain = useRef<Promise<unknown>>(Promise.resolve());
+  // Writes in flight. A background re-sync never applies while this is
+  // non-zero, or it would overwrite an optimistic tick with older server data.
+  const pendingWrites = useRef(0);
+  // Bumped when a write starts. A re-sync GET sent before a PATCH can be read
+  // before the PATCH commits yet arrive after it finished (pendingWrites is 0
+  // again by then), so the re-sync also drops its answer if this moved.
+  const writeSeq = useRef(0);
+  const monthRef = useRef(month);
+  useEffect(() => {
+    monthRef.current = month;
+  }, [month]);
 
   useEffect(() => {
     let stale = false;
-    // Queued behind pending saves: a read that overtakes an in-flight PUT
-    // (switch month and back mid-save) returns the old roster, the cell shows
-    // empty, and the next tap on it PUTs from [] and wipes the real one.
+    // Queued behind pending saves: a read that overtakes an in-flight write
+    // (switch month and back mid-save) returns the old roster for the cell.
     saveChain.current
       .then(() => fetch(`/api/schedule/admin/duty?month=${month}`))
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
       })
-      .then((data: { assignments?: { date: string; dutyType: DutyType; personId: string }[] }) => {
+      .then((data: MonthResponse) => {
         if (stale) return;
-        const next: Record<string, string[]> = {};
-        for (const row of data.assignments ?? []) {
-          const key = cellKey(row.date, row.dutyType);
-          (next[key] ??= []).push(row.personId);
-        }
-        setAssignments(next);
+        const parsed = parseMonth(data);
+        setAssignments(parsed.assignments);
+        setOutsideCounts(parsed.outside);
         setLoading(false);
       })
       .catch(() => {
@@ -71,6 +108,50 @@ export function DutyAdminEditor({
       stale = true;
     };
   }, [month, reloadKey]);
+
+  // Background re-sync, no loading veil: two people filling the same month see
+  // each other's work without pressing «Оновити». Runs on focus, when the tab
+  // becomes visible again, and once a minute while it is visible.
+  useEffect(() => {
+    let cancelled = false;
+    async function resync() {
+      if (document.visibilityState === "hidden" || pendingWrites.current > 0) return;
+      const requested = month;
+      const seqAtStart = writeSeq.current;
+      try {
+        const res = await fetch(`/api/schedule/admin/duty?month=${requested}`);
+        if (!res.ok) return;
+        const data: MonthResponse = await res.json();
+        // Drop the answer if a write started, or the month changed, meanwhile.
+        if (
+          cancelled ||
+          pendingWrites.current > 0 ||
+          writeSeq.current !== seqAtStart ||
+          monthRef.current !== requested
+        ) {
+          return;
+        }
+        const parsed = parseMonth(data);
+        setAssignments(parsed.assignments);
+        setOutsideCounts(parsed.outside);
+      } catch {
+        // A missed background refresh is invisible by design; the next one retries.
+      }
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void resync();
+    };
+    const onFocus = () => void resync();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onFocus);
+    const timer = window.setInterval(() => void resync(), RESYNC_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(timer);
+    };
+  }, [month]);
 
   function reload() {
     setLoading(true);
@@ -88,60 +169,108 @@ export function DutyAdminEditor({
 
   const days = useMemo(() => monthWeekdays(month), [month]);
 
-  const monthCounts = useMemo(() => {
-    const perType: Record<DutyType, Record<string, number>> = { CAFETERIA: {}, BOARD: {} };
-    const total: Record<string, number> = {};
-    for (const [key, ids] of Object.entries(assignments)) {
+  // All-time: every month in the DB (outside the open one, from the server) plus
+  // the live in-month assignments, so a tick moves the number instantly.
+  const counts = useMemo(() => {
+    const perType: Record<DutyType, Record<string, number>> = {
+      CAFETERIA: { ...outsideCounts.CAFETERIA },
+      BOARD: { ...outsideCounts.BOARD },
+    };
+    for (const [key, entries] of Object.entries(assignments)) {
       const dutyType = key.split("|")[1] as DutyType;
-      for (const id of ids) {
-        perType[dutyType][id] = (perType[dutyType][id] ?? 0) + 1;
-        total[id] = (total[id] ?? 0) + 1;
+      for (const { personId } of entries) {
+        perType[dutyType][personId] = (perType[dutyType][personId] ?? 0) + 1;
       }
     }
+    const total: Record<string, number> = {};
+    for (const type of Object.values(perType)) {
+      for (const [id, n] of Object.entries(type)) total[id] = (total[id] ?? 0) + n;
+    }
     return { perType, total };
-  }, [assignments]);
+  }, [assignments, outsideCounts]);
 
+  // The two chips describe the open month's load; the untouched chip is all-time.
   const summary = useMemo(() => {
     let cafeteria = 0;
     let board = 0;
-    for (const [key, ids] of Object.entries(assignments)) {
-      if (key.endsWith("|CAFETERIA")) cafeteria += ids.length;
-      else board += ids.length;
+    for (const [key, entries] of Object.entries(assignments)) {
+      if (key.endsWith("|CAFETERIA")) cafeteria += entries.length;
+      else board += entries.length;
     }
-    const untouched = members.filter((m) => !monthCounts.total[m.id]).length;
+    const untouched = members.filter((m) => !counts.total[m.id]).length;
     return { cafeteria, board, untouched };
-  }, [assignments, members, monthCounts]);
+  }, [assignments, members, counts]);
 
-  function save(date: string, dutyType: DutyType, personIds: string[]) {
+  function write(date: string, dutyType: DutyType, change: { add?: string[]; remove?: string[] }) {
+    const key = cellKey(date, dutyType);
     setError((current) => (current === "save" ? null : current));
-    setAssignments((prev) => ({ ...prev, [cellKey(date, dutyType)]: personIds }));
+    setAssignments((prev) => {
+      const current = prev[key] ?? [];
+      const removeSet = new Set(change.remove ?? []);
+      const kept = current.filter((e) => !removeSet.has(e.personId));
+      const added = (change.add ?? [])
+        .filter((id) => !kept.some((e) => e.personId === id))
+        .map((personId) => ({ personId, createdById: currentUserId }));
+      return { ...prev, [key]: [...kept, ...added] };
+    });
+    pendingWrites.current += 1;
+    writeSeq.current += 1;
     saveChain.current = saveChain.current.then(() =>
       fetch("/api/schedule/admin/duty", {
-        method: "PUT",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, dutyType, personIds }),
+        body: JSON.stringify({ date, dutyType, ...change }),
       })
-        .then((res) => {
+        .then(async (res) => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data: { people: Entry[] } = await res.json();
+          pendingWrites.current -= 1;
+          // The answer is the authoritative cell, including names other editors
+          // added. Only the last queued write applies it: an earlier answer
+          // would overwrite the optimistic state of the writes still waiting.
+          if (pendingWrites.current === 0) {
+            setAssignments((prev) => ({ ...prev, [key]: data.people }));
+          }
         })
         .catch(() => {
-          // Used to be swallowed silently: the name stayed ticked on screen
-          // while the server never stored it, so it was simply gone after a
-          // reload. Say so, and put the real roster back on screen.
+          pendingWrites.current -= 1;
+          // Say so, and put the real roster back on screen instead of leaving a
+          // tick the server never stored.
           setError("save");
           reload();
         }),
     );
   }
 
+  const setPerson = (date: string, dutyType: DutyType, personId: string, on: boolean) =>
+    write(date, dutyType, on ? { add: [personId] } : { remove: [personId] });
+
+  // «Прибрати всіх» removes the names this editor can see, not "the cell": a
+  // name someone else added a second ago must not be deleted unseen.
+  const clearCell = (date: string, dutyType: DutyType) =>
+    write(date, dutyType, { remove: peopleIn(date, dutyType) });
+
   function peopleIn(date: string, dutyType: DutyType): string[] {
-    return assignments[cellKey(date, dutyType)] ?? [];
+    return (assignments[cellKey(date, dutyType)] ?? []).map((e) => e.personId);
   }
 
   function nameOf(personId: string): string {
     const member = members.find((m) => m.id === personId);
-    return member ? `${member.lastName} ${member.firstName[0]}.` : "—";
+    return member ? `${member.lastName} ${member.firstName[0]}.` : "Невідомо";
   }
+
+  // For the open cell: who else assigned each selected person, so an editor can
+  // tell before removing a name they did not put there.
+  const assignedBy = useMemo(() => {
+    const out: Record<string, string> = {};
+    if (!cell) return out;
+    for (const entry of assignments[cellKey(cell.date, cell.dutyType)] ?? []) {
+      if (entry.createdById === currentUserId) continue;
+      const editor = members.find((m) => m.id === entry.createdById);
+      out[entry.personId] = editor ? `${editor.lastName} ${editor.firstName[0]}.` : "Невідомо";
+    }
+    return out;
+  }, [cell, assignments, members, currentUserId]);
 
   const canGoBack = month > minMonth;
   const canGoForward = month < maxMonth;
@@ -185,6 +314,7 @@ export function DutyAdminEditor({
             <PencilSimpleLine size={12} />
             {summary.board}
           </span>
+          <span className="text-[11px] text-ink-muted">за місяць</span>
           {/* The fairness signal gets the accent: with 33 people rotating,
               "who has not had a turn yet" is the number worth watching. */}
           <span
@@ -215,9 +345,8 @@ export function DutyAdminEditor({
         </div>
       )}
 
-      {/* Inert until the month has loaded: a cell tapped before that starts
-          from an empty list, and PUT replaces the whole roster - the old
-          names were wiped and the late GET then hid the new one too. */}
+      {/* Inert until the month has loaded: a cell tapped before that would
+          show an empty roster and hide the names already stored in it. */}
       <div
         className={`flex flex-col gap-2 px-5 pb-8 transition-opacity ${loading || error === "load" ? "pointer-events-none opacity-40" : ""}`}
         aria-busy={loading}
@@ -274,16 +403,18 @@ export function DutyAdminEditor({
           title={`${DUTY_META.find((d) => d.dutyType === cell.dutyType)!.label} · ${dayLongLabel(cell.date)}`}
           members={members}
           selectedIds={peopleIn(cell.date, cell.dutyType)}
-          monthCounts={monthCounts.perType[cell.dutyType]}
+          counts={counts.perType[cell.dutyType]}
+          assignedBy={assignedBy}
           saveFailed={error === "save"}
-          onToggle={(personId) => {
-            const current = peopleIn(cell.date, cell.dutyType);
-            const next = current.includes(personId)
-              ? current.filter((id) => id !== personId)
-              : [...current, personId];
-            save(cell.date, cell.dutyType, next);
-          }}
-          onClearAll={() => save(cell.date, cell.dutyType, [])}
+          onToggle={(personId) =>
+            setPerson(
+              cell.date,
+              cell.dutyType,
+              personId,
+              !peopleIn(cell.date, cell.dutyType).includes(personId),
+            )
+          }
+          onClearAll={() => clearCell(cell.date, cell.dutyType)}
         />
       )}
     </div>

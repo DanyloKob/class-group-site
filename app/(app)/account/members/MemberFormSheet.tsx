@@ -11,25 +11,16 @@ export type Member = {
   lastName: string;
   firstName: string;
   isSuperAdmin: boolean;
-  canManageTasks: boolean;
-  canManageNews: boolean;
-  canManageSchedule: boolean;
   canManageDuty: boolean;
   canPostMemories: boolean;
   scheduleGroup: ScheduleGroup | null;
   hasTelegramLink: boolean;
 };
 
-type PermissionKey = "canManageTasks" | "canManageNews" | "canManageSchedule" | "canManageDuty" | "canPostMemories";
+type PermissionKey = "canManageDuty" | "canPostMemories";
 
-// Each label states exactly what the flag grants and nothing more. The duty
-// roster used to ride along with the homework flag, which is precisely the
-// kind of "label says less than the code does" gap that let the wrong people
-// edit it - keep these honest.
+// Each label states exactly what the flag grants and nothing more - keep these honest.
 const PERMISSION_OPTIONS: { key: PermissionKey; label: string }[] = [
-  { key: "canManageTasks", label: "Може робити нагадування та збори" },
-  { key: "canManageNews", label: "Може писати оголошення" },
-  { key: "canManageSchedule", label: "Може видаляти чуже дз" },
   { key: "canManageDuty", label: "Може призначати чергових" },
   { key: "canPostMemories", label: "Може постити у спогади" },
 ];
@@ -54,26 +45,20 @@ export function MemberFormSheet({
   const [lastName, setLastName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [phone, setPhone] = useState("");
-  const [canManageTasks, setCanManageTasks] = useState(false);
-  const [canManageNews, setCanManageNews] = useState(false);
-  const [canManageSchedule, setCanManageSchedule] = useState(false);
   const [canManageDuty, setCanManageDuty] = useState(false);
   const [canPostMemories, setCanPostMemories] = useState(false);
   const [scheduleGroup, setScheduleGroup] = useState<ScheduleGroup | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const permissionState = { canManageTasks, canManageNews, canManageSchedule, canManageDuty, canPostMemories };
+  const permissionState = { canManageDuty, canPostMemories };
   const setPermission: Record<PermissionKey, (v: boolean) => void> = {
-    canManageTasks: setCanManageTasks,
-    canManageNews: setCanManageNews,
-    canManageSchedule: setCanManageSchedule,
     canManageDuty: setCanManageDuty,
     canPostMemories: setCanPostMemories,
   };
 
   // Reset fields to match editingMember the moment the sheet opens - during
-  // render (see CreateNewsSheet.tsx for why not a useEffect).
+  // render (react-hooks/set-state-in-effect forbids doing it in an effect).
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
@@ -81,9 +66,6 @@ export function MemberFormSheet({
       setLastName(editingMember?.lastName ?? "");
       setFirstName(editingMember?.firstName ?? "");
       setPhone(editingMember?.phone ?? "");
-      setCanManageTasks(editingMember?.canManageTasks ?? false);
-      setCanManageNews(editingMember?.canManageNews ?? false);
-      setCanManageSchedule(editingMember?.canManageSchedule ?? false);
       setCanManageDuty(editingMember?.canManageDuty ?? false);
       setCanPostMemories(editingMember?.canPostMemories ?? false);
       setScheduleGroup(editingMember?.scheduleGroup ?? null);
@@ -99,9 +81,6 @@ export function MemberFormSheet({
       lastName: lastName.trim(),
       firstName: firstName.trim(),
       phone: phone.trim(),
-      canManageTasks,
-      canManageNews,
-      canManageSchedule,
       canManageDuty,
       canPostMemories,
       scheduleGroup,

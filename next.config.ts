@@ -19,6 +19,19 @@ const nextConfig: NextConfig = {
   // runtime instead of a bundled module.
   serverExternalPackages: ["sharp"],
 
+  // The site (and every shared /m/<token> link) must stay out of search
+  // indexes. A robots.txt Disallow would be worse: blocked crawlers never see
+  // this header, and the URL could still be indexed from links.
+  async headers() {
+    return [{ source: "/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }] }];
+  },
+
+  // pdf.js assets served by app/pdfjs/[...path]/route.ts are read from disk at
+  // runtime, so the standalone trace has to be told to keep them.
+  outputFileTracingIncludes: {
+    "/pdfjs/\\[\\.\\.\\.path\\]": ["./node_modules/pdfjs-dist/{standard_fonts,cmaps,wasm,iccs}/**/*"],
+  },
+
   images: {
     // Configuring localPatterns at all turns it into an allowlist - every
     // local path rendered through next/image needs its own entry here, or

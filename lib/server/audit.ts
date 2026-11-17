@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 
-export type AuditEntityType = "News" | "Task" | "Homework" | "MemoryPost";
+export type AuditEntityType = "MemoryPost" | "ProjectTopic" | "ProjectMaterial";
 
 /**
  * Fire-and-forget by design: a logging failure must never break the real

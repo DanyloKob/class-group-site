@@ -1,8 +1,6 @@
 import type { MetadataRoute } from "next";
 
-// iOS Safari only allows web push after the site is added to the home
-// screen as an installed PWA - this manifest is what makes "Add to Home
-// Screen" produce a real app-like icon/launch instead of a bare bookmark.
+// Lets the class add the site to the home screen as an app.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "L-23 LIFE",

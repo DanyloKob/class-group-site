@@ -73,3 +73,6 @@ id_ed25519*
 /skills-lock.json
 /AGENTS.md
 /CLAUDE.md
+
+# «Проєкти»: uploaded PDF/PPTX files (see MATERIALS_DIR)
+/storage/

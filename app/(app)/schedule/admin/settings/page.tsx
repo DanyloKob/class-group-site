@@ -6,7 +6,7 @@ import { ScheduleSettingsForm } from "@/app/(app)/schedule/admin/settings/Schedu
 
 export default async function ScheduleSettingsPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/account");
   if (!canManageScheduleSettings(user)) redirect("/schedule");
 
   const settings = await getScheduleSettings();

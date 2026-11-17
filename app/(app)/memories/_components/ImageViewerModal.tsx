@@ -22,7 +22,7 @@ export function ImageViewerModal({
   const [index, setIndex] = useState(initialIndex);
 
   // Reset to whichever thumbnail was tapped each time the viewer (re)opens -
-  // during render, not an effect (see CreateNewsSheet.tsx for why).
+  // during render, not an effect (react-hooks/set-state-in-effect).
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);

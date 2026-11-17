@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Heart } from "@phosphor-icons/react";
 
-type Feature = "news" | "memories" | "homework";
+type Feature = "memories";
 
 export function LikeButton({
   feature,

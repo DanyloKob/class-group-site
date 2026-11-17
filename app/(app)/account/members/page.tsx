@@ -5,7 +5,7 @@ import { MembersManager } from "@/app/(app)/account/members/MembersManager";
 
 export default async function MembersPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/account");
   if (!user.isSuperAdmin) redirect("/account");
 
   const members = await prisma.user.findMany({
@@ -18,9 +18,6 @@ export default async function MembersPage() {
     lastName: m.lastName,
     firstName: m.firstName,
     isSuperAdmin: m.isSuperAdmin,
-    canManageTasks: m.canManageTasks,
-    canManageNews: m.canManageNews,
-    canManageSchedule: m.canManageSchedule,
     canManageDuty: m.canManageDuty,
     scheduleGroup: m.scheduleGroup,
     canPostMemories: m.canPostMemories,

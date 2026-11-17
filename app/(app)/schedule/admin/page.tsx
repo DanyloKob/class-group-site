@@ -6,7 +6,7 @@ import { canManageDuty, canManageScheduleSettings } from "@/lib/schedule/permiss
 
 export default async function ScheduleAdminPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/account");
 
   const mayEditDuty = canManageDuty(user);
   const maySettings = canManageScheduleSettings(user);

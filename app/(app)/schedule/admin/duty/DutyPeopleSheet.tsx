@@ -14,9 +14,13 @@ export function DutyPeopleSheet({
   title,
   members,
   selectedIds,
-  /** How many times each person already has this duty in the visible month -
-   * the whole point of the screen is spreading turns evenly across 33 people. */
-  monthCounts,
+  /** How many times each person has had this duty, all-time: every month in
+   * the DB, not just the visible one. The whole point of the screen is
+   * spreading turns evenly across 33 people. */
+  counts,
+  /** personId to the name of the OTHER editor who assigned them, for people
+   * currently ticked in this cell. */
+  assignedBy,
   /** The page's own error banner sits under the sheet's overlay, so a failed
    * save has to be said here too or the tick just silently flips back. */
   saveFailed,
@@ -28,7 +32,8 @@ export function DutyPeopleSheet({
   title: string;
   members: Member[];
   selectedIds: string[];
-  monthCounts: Record<string, number>;
+  counts: Record<string, number>;
+  assignedBy: Record<string, string>;
   saveFailed: boolean;
   onToggle: (personId: string) => void;
   onClearAll: () => void;
@@ -58,14 +63,14 @@ export function DutyPeopleSheet({
     if (sort === "queue") {
       list.sort(
         (a, b) =>
-          (monthCounts[a.id] ?? 0) - (monthCounts[b.id] ?? 0) ||
+          (counts[a.id] ?? 0) - (counts[b.id] ?? 0) ||
           a.lastName.localeCompare(b.lastName, "uk"),
       );
     } else {
       list.sort((a, b) => a.lastName.localeCompare(b.lastName, "uk"));
     }
     return list;
-  }, [members, monthCounts, sort, frozenOrder]);
+  }, [members, counts, sort, frozenOrder]);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -88,7 +93,7 @@ export function DutyPeopleSheet({
       <div className="flex flex-col gap-3">
         {saveFailed && (
           <p className="rounded-xl bg-danger/10 px-3 py-2.5 text-xs text-danger">
-            Не вдалося зберегти зміну. Список оновлено з сервера — спробуйте ще раз.
+            Не вдалося зберегти зміну. Список оновлено з сервера, спробуйте ще раз.
           </p>
         )}
         <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5">
@@ -135,7 +140,7 @@ export function DutyPeopleSheet({
         <div className="flex flex-col">
           {visible.map((member) => {
             const selected = selectedIds.includes(member.id);
-            const count = monthCounts[member.id] ?? 0;
+            const count = counts[member.id] ?? 0;
             return (
               <button
                 key={member.id}
@@ -150,8 +155,15 @@ export function DutyPeopleSheet({
                 >
                   {selected && <Check size={12} weight="bold" className="text-accent-ink" />}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-sm">
-                  {member.lastName} {member.firstName}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm">
+                    {member.lastName} {member.firstName}
+                  </span>
+                  {selected && assignedBy[member.id] && (
+                    <span className="block truncate text-[11px] text-ink-muted">
+                      призначив(ла) {assignedBy[member.id]}
+                    </span>
+                  )}
                 </span>
                 {count > 0 && (
                   <span className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-[11px] text-ink-muted">

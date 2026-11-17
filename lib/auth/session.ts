@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
@@ -55,7 +56,7 @@ export async function clearSessionCookie() {
   store.delete(SESSION_COOKIE);
 }
 
-export async function getCurrentUser(): Promise<User | null> {
+export const getCurrentUser = cache(async (): Promise<User | null> => {
   const store = await cookies();
   const rawToken = store.get(SESSION_COOKIE)?.value;
   if (!rawToken) return null;
@@ -69,7 +70,7 @@ export async function getCurrentUser(): Promise<User | null> {
     return null;
   }
   return session.user;
-}
+});
 
 export async function destroyCurrentSession() {
   const store = await cookies();

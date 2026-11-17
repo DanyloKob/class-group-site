@@ -14,9 +14,12 @@ function monthBounds(month: string): { from: Date; to: Date } {
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-// GET ?month=YYYY-MM - every assignment in that month, flat. The editor
-// needs the whole month at once anyway (it also counts per-person turns to
-// keep the rotation fair), so this is one round trip instead of ~22.
+// GET ?month=YYYY-MM - every assignment in that month, flat, plus how many
+// turns each person has in every OTHER month. The editor needs the whole
+// month at once anyway, and the per-person counter is all-time (every month
+// in the DB, past and future), so the month's own rows are counted client
+// side - that keeps the numbers live while ticking - and everything outside
+// the month arrives here as a ready-made tally.
 export async function GET(request: Request) {
   const check = await requireAuthApi();
   if (check.error) return check.error;
@@ -30,59 +33,93 @@ export async function GET(request: Request) {
   }
 
   const { from, to } = monthBounds(month);
-  const rows = await prisma.dutyAssignment.findMany({
-    where: { date: { gte: from, lt: to } },
-    select: { date: true, dutyType: true, personId: true },
-  });
+  const [rows, outside] = await Promise.all([
+    prisma.dutyAssignment.findMany({
+      where: { date: { gte: from, lt: to } },
+      select: { date: true, dutyType: true, personId: true, createdById: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.dutyAssignment.groupBy({
+      by: ["personId", "dutyType"],
+      where: { OR: [{ date: { lt: from } }, { date: { gte: to } }] },
+      _count: { _all: true },
+    }),
+  ]);
 
   return NextResponse.json({
+    month,
     assignments: rows.map((r) => ({
       date: r.date.toISOString().slice(0, 10),
       dutyType: r.dutyType,
       personId: r.personId,
+      createdById: r.createdById,
+    })),
+    countsOutsideMonth: outside.map((r) => ({
+      personId: r.personId,
+      dutyType: r.dutyType,
+      count: r._count._all,
     })),
   });
 }
 
-const putSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  dutyType: z.enum(DutyType),
-  personIds: z.array(z.string().min(1)).max(50),
-});
+const patchSchema = z
+  .object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    dutyType: z.enum(DutyType),
+    add: z.array(z.string().min(1)).max(50).default([]),
+    remove: z.array(z.string().min(1)).max(50).default([]),
+  })
+  .refine((v) => v.add.length + v.remove.length > 0, { message: "nothing_to_do" })
+  .refine((v) => !v.add.some((id) => v.remove.includes(id)), { message: "id_in_both" });
 
-// PUT replaces the whole roster for one date + duty type. The editor always
-// knows the full list it wants, so replace-in-a-transaction keeps client and
-// server in sync with no add/remove diffing on either side.
-export async function PUT(request: Request) {
+// PATCH adds and/or removes individual people on one date + duty type. It
+// replaced a whole-roster PUT: with several editors, a PUT from a stale screen
+// silently erased names another editor had just added. Per-person add and
+// remove commute, and repeating either is harmless. The answer is the
+// authoritative cell, so the caller immediately sees what others put there.
+export async function PATCH(request: Request) {
   const check = await requireAuthApi();
   if (check.error) return check.error;
   if (!canManageDuty(check.user)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const parsed = putSchema.safeParse(await request.json());
+  const body = await request.json().catch(() => null);
+  const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_body", issues: parsed.error.issues }, { status: 400 });
   }
-  const { date, dutyType, personIds } = parsed.data;
+  const { date, dutyType } = parsed.data;
+  const add = Array.from(new Set(parsed.data.add));
+  const remove = Array.from(new Set(parsed.data.remove));
   const dateValue = parseDateParam(date);
-  const unique = Array.from(new Set(personIds));
+
+  if (add.length > 0) {
+    const known = await prisma.user.count({ where: { id: { in: add } } });
+    if (known !== add.length) {
+      return NextResponse.json({ error: "unknown_person" }, { status: 400 });
+    }
+  }
 
   await prisma.$transaction([
-    prisma.dutyAssignment.deleteMany({ where: { date: dateValue, dutyType } }),
-    ...(unique.length > 0
+    ...(remove.length > 0
+      ? [prisma.dutyAssignment.deleteMany({ where: { date: dateValue, dutyType, personId: { in: remove } } })]
+      : []),
+    ...(add.length > 0
       ? [
           prisma.dutyAssignment.createMany({
-            data: unique.map((personId) => ({
-              date: dateValue,
-              dutyType,
-              personId,
-              createdById: check.user.id,
-            })),
+            data: add.map((personId) => ({ date: dateValue, dutyType, personId, createdById: check.user.id })),
+            skipDuplicates: true,
           }),
         ]
       : []),
   ]);
 
-  return NextResponse.json({ ok: true });
+  const people = await prisma.dutyAssignment.findMany({
+    where: { date: dateValue, dutyType },
+    select: { personId: true, createdById: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return NextResponse.json({ date, dutyType, people });
 }

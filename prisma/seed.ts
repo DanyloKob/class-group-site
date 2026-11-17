@@ -20,9 +20,6 @@ async function main() {
   const helperFields = {
     lastName: "Староста",
     firstName: "Тест",
-    canManageTasks: true,
-    canManageNews: true,
-    canManageSchedule: true,
     canManageDuty: true,
     canPostMemories: true,
   };

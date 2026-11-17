@@ -4,11 +4,11 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import type { User } from "@/lib/generated/prisma/client";
 
-/** Server Component guard: must be logged in. Redirects guests to /login. */
+/** Server Component guard: must be logged in. Redirects guests to /account. */
 export async function requireAuth(): Promise<User> {
   const user = await getCurrentUser();
   if (!user) {
-    redirect("/login");
+    redirect("/account");
   }
   return user;
 }
@@ -17,7 +17,7 @@ export async function requireAuth(): Promise<User> {
 export async function requireSuperAdmin(): Promise<User> {
   const user = await requireAuth();
   if (!user.isSuperAdmin) {
-    redirect("/tasks");
+    redirect("/account");
   }
   return user;
 }

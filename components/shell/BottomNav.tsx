@@ -4,28 +4,26 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  ClipboardText,
-  Megaphone,
   CalendarBlank,
   Images,
+  Presentation,
   User,
   type Icon,
 } from "@phosphor-icons/react";
 
-const NAV_ITEMS: { href: string; label: string; icon: Icon; iconFilled: Icon }[] = [
-  { href: "/tasks", label: "Завдання", icon: ClipboardText, iconFilled: ClipboardText },
-  { href: "/news", label: "Оголошення", icon: Megaphone, iconFilled: Megaphone },
+const NAV_ITEMS: { href: string; label: string; icon: Icon; iconFilled: Icon; loginOnly?: boolean }[] = [
+  { href: "/projects", label: "Проєкти", icon: Presentation, iconFilled: Presentation },
   { href: "/schedule", label: "Розклад", icon: CalendarBlank, iconFilled: CalendarBlank },
-  { href: "/memories", label: "Спогади", icon: Images, iconFilled: Images },
+  { href: "/memories", label: "Спогади", icon: Images, iconFilled: Images, loginOnly: true },
   { href: "/account", label: "Профіль", icon: User, iconFilled: User },
 ];
 
-export function BottomNav() {
+export function BottomNav({ isLoggedIn }: { isLoggedIn: boolean }) {
   const pathname = usePathname();
 
   return (
     <nav className="flex shrink-0 items-stretch border-t border-border bg-surface/80 backdrop-blur-md">
-      {NAV_ITEMS.map((item) => {
+      {NAV_ITEMS.filter((item) => isLoggedIn || !item.loginOnly).map((item) => {
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
         const ItemIcon = active ? item.iconFilled : item.icon;
 
